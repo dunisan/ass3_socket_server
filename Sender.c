@@ -17,7 +17,7 @@
 #define BUFFER_SIZE 4092 // Buffer size for sending the text 
 #define TEXT_LENGTH 8640185
 
-void sendfile(int sockfd, char *text, int start); //
+
 int authentication(int sockfd);
 
 // readFile() Read file from text save it in a strtin and returns a pointer to the text. 
@@ -200,27 +200,7 @@ char* readFile(){
 
 
 
-    void sendfile(int sock, char *text, int start){
-      
-     
-        
-        int byteSent = 0;
-        byteSent = send(sock, text, TEXT_LENGTH/2 + 1, 0); // send the file with send()
-       printf("%c\n", *text); 
-        printf("%d\n",byteSent);
-        if(byteSent == -1){ // 
-            printf("send() faild with an error %d", errno); 
-        } else if(byteSent == 0){ // 
-            printf("peer has closed the TCP connection prior to send(). \n"); 
-        } else if(byteSent < TEXT_LENGTH/2){
-            printf("sent only %d bytes from the requierd %d\n", byteSent, TEXT_LENGTH/2); 
-        } else{
-            printf("message was succussfuly sent, sent %d bytes\n", byteSent); 
-        }
-
-        return; 
-
-    } 
+    
 
     int authentication(int sockfd){
         int authenticationReply; 
