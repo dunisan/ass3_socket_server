@@ -1,12 +1,9 @@
 all: sender receiver
 
-sender: Sender.o funcOfSender.o server.h
-	gcc -Wall Sender.o funcOfSender.o -o sender
-Sender.o: Sender.c server.h
-	gcc -c -Wall Sender.c -o Sender.o
-funcOfSender.o: funcOfSender.c server.h
-	gcc -c -Wall funcOfSender.c -o funcOfSender.o
-	
+sender: Sender.o
+	gcc -Wall Sender.o -o sender
+Sender.o: Sender.c 
+	gcc -c -Wall Sender.c -o Sender.o	
 	
 receiver: Receiver.o
 	gcc -Wall Receiver.o -o receiver

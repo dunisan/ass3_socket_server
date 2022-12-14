@@ -13,14 +13,16 @@
 #define SERVER_PORT 9998
 #define SERVER_IP_ADDRESS "127.0.0.1"
 #define BUFFER_SIZE 4092
-#define TEXT_LENGTH 1728037
+#define TEXT_LENGTH 8640185
 
 long timeOfReceivingFiles[100]; 
 int indexOfReveivingFiles = 0; 
 
+void printToFile(char *buffer);
+
 int main(){
 
-
+    // open a socket for the receiver
     int listeningSocket = -1; 
     listeningSocket = socket(AF_INET, SOCK_STREAM, 0); 
     if(listeningSocket == -1){
@@ -42,6 +44,7 @@ int main(){
     server_address.sin_port = htons(SERVER_PORT);
     server_address.sin_addr.s_addr = INADDR_ANY; // any IP at this port 
     
+    
     int bindResult = bind(listeningSocket, (struct sockaddr *)&server_address, sizeof(server_address)); 
     if(bindResult == -1){
         printf("bind() failed with error code : %d\n" , errno); 
@@ -50,7 +53,7 @@ int main(){
         return -1; 
     }
 
-    // Make socket listening; 
+    
 
     int listenResult = listen(listeningSocket, 4); 
     if(listenResult == -1){
@@ -60,12 +63,11 @@ int main(){
     }
 
     printf("Waiting for incoming TCP-connection...\n");
-    struct sockaddr_in clientAddress; 
+
+    struct sockaddr_in clientAddress; // A new socket for the tcp connection with client 
     socklen_t clientAddressLen = sizeof(clientAddress); 
     
 
-    
-    
     memset(&clientAddress, 0, sizeof(clientAddress)); 
     clientAddressLen = sizeof(clientAddress); 
     int clientSocket = accept(listeningSocket, (struct sockaddr *)&clientAddress, &clientAddressLen);
@@ -79,17 +81,21 @@ int main(){
     
     while(1){
 
+       
 
-        int totalByteReceive = 0; 
-        int byteRecieved;
-        //receive a message from client
+        int totalByteReceive = 0; // sum the total byte that received, so we know wen to stop to listen
+        int byteRecieved; // byte received in each recv() call. 
+
+        //receive the first file part from client
+
         char buffer[BUFFER_SIZE]; 
 
         while(1){
             memset(buffer, 0, BUFFER_SIZE);
-
-            struct timespec before, after; 
+                
+            struct timespec before, after; // calculate the time that takes to receive every part. 
             clock_gettime(CLOCK_MONOTONIC, &before); 
+
             if((byteRecieved = recv(clientSocket, buffer, BUFFER_SIZE, 0)) < 0){
                 printf("recv failed with error code : %d", errno);
                 //close socket
@@ -98,30 +104,29 @@ int main(){
                 return -1;
             }else{
                 totalByteReceive += byteRecieved;
-                printf("%s\n",buffer);
-                if(totalByteReceive == TEXT_LENGTH/2){
+                
+                // The sender sends in the first time exactly half of the text.   
+                if(totalByteReceive == TEXT_LENGTH/2){ 
                     clock_gettime(CLOCK_MONOTONIC, &after);
                     timeOfReceivingFiles[indexOfReveivingFiles++] = after.tv_nsec - before.tv_nsec;
                     break;
                 }
-                if(byteRecieved == 17){
+
+                if(byteRecieved == 17){ // We got the exit message from the sender. go to the end. 
+                    printf("%s\n",buffer);
                     goto end;
                 }
             }
         }
-           
-                
-           
-     
-        printf("\n\n\n\nrecieved %d bytes\n\n\n", totalByteReceive);
+            
+        printf("Received succussfully part 1\n");    
 
-
-       // int authentication = 4599 ^ 790;
-        char authenticationMessage[4] = "4402";
+        // Autentication with the sender. send the xor of 4599 and 0197. 
+        int authenticationMessage = 4599 ^ 197;
 
         int messageLen = sizeof(authenticationMessage);
 
-        int byteSent = send(clientSocket, authenticationMessage, messageLen, 0);
+        int byteSent = send(clientSocket, &authenticationMessage, messageLen, 0);
         if(byteSent == -1){
             printf("send() failed with error code : %d ", errno);
             close(listeningSocket);
@@ -134,16 +139,16 @@ int main(){
         } else{
             printf("authentication message was succussfuly sent\n"); 
         }
+       
+        //receive the second part from the client
+        
 
-        //receive a message from client
-         
-        memset(buffer, 0, BUFFER_SIZE);
         while(1){
             memset(buffer, 0, BUFFER_SIZE);
 
             struct timespec before, after; 
             clock_gettime(CLOCK_MONOTONIC, &before); 
-
+            
             if((byteRecieved = recv(clientSocket, buffer, BUFFER_SIZE, 0)) < 0){
                 printf("recv failed with error code : %d", errno);
                 //close socket
@@ -152,31 +157,34 @@ int main(){
                 return -1;
             }
             else{
-                
                 totalByteReceive += byteRecieved;
-                printf("\n\n%d  ------- %d\n\n", totalByteReceive, byteRecieved);
-                printf("%s",buffer);
+               
+
                 if(totalByteReceive == TEXT_LENGTH){
-                    clock_gettime(CLOCK_MONOTONIC, &after);
-                    timeOfReceivingFiles[indexOfReveivingFiles++] = after.tv_nsec - before.tv_nsec;;
+                    clock_gettime(CLOCK_MONOTONIC, &after); // finshed recv the second part. save time
+                    timeOfReceivingFiles[indexOfReveivingFiles++] = after.tv_nsec - before.tv_nsec;
                     break;
                 }
             }
         }
 
+        printf("Received succussfully part 1\n");  
+       
 
     }
 
     end: 
 
-        long sumOfTimes=0;
+        long sumOfTimes=0; // sum up all the times. 
         for(int i=0;i<indexOfReveivingFiles;i++){
-            printf("\ntime %d: %ld", i, timeOfReceivingFiles[i]);
+            if(i%2==0)
+                printf("\n\nsend number %d:\n",i/2+1);
+            printf("\ntime %d: %ld nano seconds", i, timeOfReceivingFiles[i]);
             sumOfTimes +=timeOfReceivingFiles[i];
         }
         printf("\n");
-        long avarageOftimes = sumOfTimes/indexOfReveivingFiles;
-        printf("The Avarage time for receving all packets is %ld\n", avarageOftimes);
+        long avarageOftimes = sumOfTimes/indexOfReveivingFiles; // calculate th avarge time
+        printf("\nThe Avarage time for receving all packets is %ld\n", avarageOftimes);
 
         
 
@@ -184,5 +192,5 @@ int main(){
 
 
     close(listeningSocket);
-
 }
+

@@ -14,6 +14,7 @@
 #define BUFFER_SIZE 1024
 
 
+
 char* readFile(){
     	FILE *ptr;
     long textLength, readLength;
