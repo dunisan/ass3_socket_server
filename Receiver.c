@@ -85,11 +85,14 @@ int main(){
 
         int totalByteReceive = 0; // sum the total byte that received, so we know wen to stop to listen
         int byteRecieved; // byte received in each recv() call. 
+        int sizeOfFile; 
 
         //receive the first file part from client
 
         char buffer[BUFFER_SIZE]; 
 
+        recv(clientSocket,&sizeOfFile, sizeof(sizeOfFile), 0);
+        printf("size of file to get is %d\n", sizeOfFile); 
         while(1){
             memset(buffer, 0, BUFFER_SIZE);
                 
@@ -106,7 +109,7 @@ int main(){
                 totalByteReceive += byteRecieved;
                 
                 // The sender sends in the first time exactly half of the text.   
-                if(totalByteReceive == TEXT_LENGTH/2){ 
+                if(totalByteReceive == sizeOfFile){ 
                     clock_gettime(CLOCK_MONOTONIC, &after);
                     timeOfReceivingFiles[indexOfReveivingFiles++] = after.tv_nsec - before.tv_nsec;
                     break;
