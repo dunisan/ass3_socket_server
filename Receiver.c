@@ -17,7 +17,7 @@
 #define BUFFER_SIZE 4096 
 #define TEXT_LENGTH 8640185
 
-long timeOfReceivingFiles[100];  // buffer of longs that every i index holds how much time took the i sending part. 
+uint64_t timeOfReceivingFiles[1000];  // buffer of longs that every i index holds how much time took the i sending part. 
 int indexOfReveivingFiles = 0;  // index to keep track which time we are taking now
 
 
@@ -108,14 +108,21 @@ int main(){
 
         printf("expecting size of file to be: %d\n", sizeOfFile); 
         
+        if(setsockopt(clientSocket,IPPROTO_TCP,TCP_CONGESTION,"cubic",strlen("cubic"))<0){
+            return -1; 
+        }
+        struct timespec before, after;
+        clock_gettime(CLOCK_MONOTONIC, &before);
+        uint64_t before_ns = (before.tv_sec * 1000000000) + before.tv_nsec;   
 
         //******recv first part while loop******//
         while(1){  // loop to get the message in chuncks of BUFFER_SIZE bytes(4096); 
 
+        
             memset(buffer, 0, BUFFER_SIZE); // clear the buffer
                 
-            struct timespec before, after; // struct for saving the currnt time; 
-            clock_gettime(CLOCK_MONOTONIC, &before); // save current time before recv the file 
+             // struct for saving the currnt time; 
+             // save current time before recv the file 
             if((byteRecieved = recv(clientSocket, buffer, BUFFER_SIZE, 0)) < 0){   // recv the chunks of message
                 printf("recv failed with error code : %d", errno);
                 close(listeningSocket); 
@@ -127,7 +134,8 @@ int main(){
             
             if(totalByteReceive >= sizeOfFile){ // means that all the first part of the message has arrived
                 clock_gettime(CLOCK_MONOTONIC, &after); // save she current time after recv the file
-                timeOfReceivingFiles[indexOfReveivingFiles++] = after.tv_nsec - before.tv_nsec; // calculate the time it took to recv the file
+                uint64_t after_ns = (after.tv_sec * 1000000000) + after.tv_nsec;   
+                timeOfReceivingFiles[indexOfReveivingFiles++] = after_ns - before_ns; // calculate the time it took to recv the file
                 printf("Received succussfully part 1\n");
                 printf("%d total\n ", totalByteReceive);
   
@@ -155,8 +163,10 @@ int main(){
         }
        
 
-
-        setsockopt(clientSocket,IPPROTO_TCP,TCP_CONGESTION,"reno",4); // change the cc algorithm for receving the second part of file
+        if(setsockopt(clientSocket,IPPROTO_TCP,TCP_CONGESTION,"reno",4) < 0){ // change the cc algorithm for receving the second part of file
+            printf("setsocketpot() failed with error code : %d" , errno); 
+            return -1; 
+        }
 
 
 
@@ -167,15 +177,16 @@ int main(){
         recv(clientSocket,&sizeOfFile, sizeof(sizeOfFile), 0);  // receive the length of the second part of the file
         printf("size of file to get is %d\n", sizeOfFile); 
 
-
+        clock_gettime(CLOCK_MONOTONIC, &before);
+        before_ns = (before.tv_sec * 1000000000) + before.tv_nsec;
         //********** recv second part while loop********// 
         // ** The same process like recv first part ** // 
-
+        //struct timespec before, after; 
         while(1){
             memset(buffer, 0, BUFFER_SIZE); 
 
-            struct timespec before, after; 
-            clock_gettime(CLOCK_MONOTONIC, &before); 
+            
+             
             
             
             if((byteRecieved = recv(clientSocket, buffer, BUFFER_SIZE, 0)) < 0){ 
@@ -188,8 +199,9 @@ int main(){
             totalByteReceive += byteRecieved; 
             
             if(totalByteReceive >= sizeOfFile){
-            clock_gettime(CLOCK_MONOTONIC, &after);
-                timeOfReceivingFiles[indexOfReveivingFiles++] = after.tv_nsec - before.tv_nsec; 
+                clock_gettime(CLOCK_MONOTONIC, &after);
+                uint64_t after_ns = (after.tv_sec * 1000000000) + after.tv_nsec;
+                timeOfReceivingFiles[indexOfReveivingFiles++] = after_ns - before_ns; 
                 printf("%d total\n ", totalByteReceive);
                 printf("Received succussfully part 2\n");
                 break;

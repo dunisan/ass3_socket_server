@@ -68,8 +68,10 @@ int main(){
 
     while(sendfile){
         
-        setsockopt(sock,IPPROTO_TCP,TCP_CONGESTION,"cubic",5); // send the file with "cubic" cc algorithm 
-                           
+        if(setsockopt(sock,IPPROTO_TCP,TCP_CONGESTION,"cubic",5)<0){  // send the file with "cubic" cc algorithm 
+            return -1; 
+        }                       
+    
 
         fp = fopen(filename, "r"); // open the file for reading
         if(fp == NULL){
@@ -131,7 +133,9 @@ int main(){
 
         // Change the CC algorithm to "reno"
 
-        setsockopt(sock,IPPROTO_TCP,TCP_CONGESTION,"reno",4);
+        if(setsockopt(sock,IPPROTO_TCP,TCP_CONGESTION,"reno",sizeof("reno"))<0){
+            return -1; 
+        }
 
        
        
