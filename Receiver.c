@@ -8,44 +8,45 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <netinet/tcp.h>
+
 #include <time.h>
 
-#define SERVER_PORT 9998
-#define SERVER_IP_ADDRESS "127.0.0.1"
-#define BUFFER_SIZE 4092
+#define SERVER_PORT 9998  // port for making connection
+#define SERVER_IP_ADDRESS "127.0.0.1" // local IP 
+#define BUFFER_SIZE 4096 
 #define TEXT_LENGTH 8640185
 
-long timeOfReceivingFiles[100]; 
-int indexOfReveivingFiles = 0; 
+long timeOfReceivingFiles[100];  // buffer of longs that every i index holds how much time took the i sending part. 
+int indexOfReveivingFiles = 0;  // index to keep track which time we are taking now
 
-void printToFile(char *buffer);
 
 int main(){
 
     // open a socket for the receiver
     int listeningSocket = -1; 
-    listeningSocket = socket(AF_INET, SOCK_STREAM, 0); 
+    listeningSocket = socket(AF_INET, SOCK_STREAM, 0); // The listining socket descriptor
     if(listeningSocket == -1){
         printf("Could not create socket : %d", errno);
         return -1; 
     }
 
     int enableReuse = 1; 
-    int ret = setsockopt(listeningSocket, SOL_SOCKET, SO_REUSEADDR, &enableReuse, sizeof(int)); 
+    int ret = setsockopt(listeningSocket, SOL_SOCKET, SO_REUSEADDR, &enableReuse, sizeof(int)); // enable reuse of the socket on its port
     if(ret<0){
         printf("setsocketpot() failed with error code : %d" , errno); 
         return -1; 
     }
 
-    struct sockaddr_in server_address;
-    memset(&server_address, 0, sizeof(server_address));
+    struct sockaddr_in server_address; // struct of the socket
+    memset(&server_address, 0, sizeof(server_address)); 
 
-    server_address.sin_family = AF_INET; 
-    server_address.sin_port = htons(SERVER_PORT);
+    server_address.sin_family = AF_INET;  // use IPv4 address
+    server_address.sin_port = htons(SERVER_PORT); // 
     server_address.sin_addr.s_addr = INADDR_ANY; // any IP at this port 
     
     
-    int bindResult = bind(listeningSocket, (struct sockaddr *)&server_address, sizeof(server_address)); 
+    int bindResult = bind(listeningSocket, (struct sockaddr *)&server_address, sizeof(server_address));  // iund the port with address and port
     if(bindResult == -1){
         printf("bind() failed with error code : %d\n" , errno); 
         //close socket
@@ -55,81 +56,91 @@ int main(){
 
     
 
-    int listenResult = listen(listeningSocket, 4); 
+    int listenResult = listen(listeningSocket, 4);  // start listining for incoming sockets 
     if(listenResult == -1){
         printf("listen() failed with error code : %d", errno);
         //close the socket
         close(listeningSocket); 
     }
 
-    printf("Waiting for incoming TCP-connection...\n");
+    printf("Waiting for incoming TCP-connection...\n"); 
 
     struct sockaddr_in clientAddress; // A new socket for the tcp connection with client 
     socklen_t clientAddressLen = sizeof(clientAddress); 
-    
 
     memset(&clientAddress, 0, sizeof(clientAddress)); 
     clientAddressLen = sizeof(clientAddress); 
-    int clientSocket = accept(listeningSocket, (struct sockaddr *)&clientAddress, &clientAddressLen);
+
+    int clientSocket = accept(listeningSocket, (struct sockaddr *)&clientAddress, &clientAddressLen); // accept a new connection from the sender
     if(clientSocket == -1){
         printf("listen() failed with error code : %d" , errno);
         close(listeningSocket); 
         return -1;
     }
 
-    printf("A new client connection accpted\n");
+    printf("A new client connection accepted\n"); 
     
+    // *** main while loop for receiving to parts of the file and perform authentication ***//
     while(1){
+        
 
        
-
-        int totalByteReceive = 0; // sum the total byte that received, so we know wen to stop to listen
+        char buffer[BUFFER_SIZE];  // buffer for receiving message
+        int totalByteReceive = 0; // Total sum of received bytes, so we know wen to stop to recv() 
         int byteRecieved; // byte received in each recv() call. 
-        int sizeOfFile; 
+        int sizeOfFile; // The size of coming message from sender 
 
-        //receive the first file part from client
 
-        char buffer[BUFFER_SIZE]; 
 
-        recv(clientSocket,&sizeOfFile, sizeof(sizeOfFile), 0);
-        printf("size of file to get is %d\n", sizeOfFile); 
-        while(1){
-            memset(buffer, 0, BUFFER_SIZE);
+
+
+
+
+        //************receive the first file part from client*****************//
+        
+
+        
+        recv(clientSocket,&sizeOfFile, sizeof(sizeOfFile), 0); // recv the size of the first part of file 
+
+        if(sizeOfFile == 0){ // The sender has finised sending the file. break the while loop. 
+            break;
+        }
+
+        printf("expecting size of file to be: %d\n", sizeOfFile); 
+        
+
+        //******recv first part while loop******//
+        while(1){  // loop to get the message in chuncks of BUFFER_SIZE bytes(4096); 
+
+            memset(buffer, 0, BUFFER_SIZE); // clear the buffer
                 
-            struct timespec before, after; // calculate the time that takes to receive every part. 
-            clock_gettime(CLOCK_MONOTONIC, &before); 
-
-            if((byteRecieved = recv(clientSocket, buffer, BUFFER_SIZE, 0)) < 0){
+            struct timespec before, after; // struct for saving the currnt time; 
+            clock_gettime(CLOCK_MONOTONIC, &before); // save current time before recv the file 
+            if((byteRecieved = recv(clientSocket, buffer, BUFFER_SIZE, 0)) < 0){   // recv the chunks of message
                 printf("recv failed with error code : %d", errno);
-                //close socket
                 close(listeningSocket); 
                 close(clientSocket);
                 return -1;
-            }else{
-                totalByteReceive += byteRecieved;
-                
-                // The sender sends in the first time exactly half of the text.   
-                if(totalByteReceive == sizeOfFile){ 
-                    clock_gettime(CLOCK_MONOTONIC, &after);
-                    timeOfReceivingFiles[indexOfReveivingFiles++] = after.tv_nsec - before.tv_nsec;
-                    break;
-                }
+            }
 
-                if(byteRecieved == 17){ // We got the exit message from the sender. go to the end. 
-                    printf("%s\n",buffer);
-                    goto end;
-                }
+            totalByteReceive += byteRecieved; // sum up the number of bytes that already received until recv all message
+            
+            if(totalByteReceive >= sizeOfFile){ // means that all the first part of the message has arrived
+                clock_gettime(CLOCK_MONOTONIC, &after); // save she current time after recv the file
+                timeOfReceivingFiles[indexOfReveivingFiles++] = after.tv_nsec - before.tv_nsec; // calculate the time it took to recv the file
+                printf("Received succussfully part 1\n");
+                printf("%d total\n ", totalByteReceive);
+  
+                break; // got all the message from the sender. break the recv while loop 
             }
         }
             
-        printf("Received succussfully part 1\n");    
+           
+        // Autentication with the sender. send the xor of 4599 and 0197 to sender. 
 
-        // Autentication with the sender. send the xor of 4599 and 0197. 
         int authenticationMessage = 4599 ^ 197;
 
-        int messageLen = sizeof(authenticationMessage);
-
-        int byteSent = send(clientSocket, &authenticationMessage, messageLen, 0);
+        int byteSent = send(clientSocket, &authenticationMessage, sizeof(authenticationMessage), 0);
         if(byteSent == -1){
             printf("send() failed with error code : %d ", errno);
             close(listeningSocket);
@@ -137,63 +148,82 @@ int main(){
             return -1; 
         } else if(byteSent == 0){
             printf("peer has closed the TCP connection prior to send(). \n"); 
-        } else if(byteSent < messageLen){
-            printf("sent only %d bytes from the requierd %d", byteSent, messageLen); 
+        } else if(byteSent < sizeof(authenticationMessage)){
+            printf("sent only %d bytes from the requierd %ld", byteSent, sizeof(authenticationMessage)); 
         } else{
             printf("authentication message was succussfuly sent\n"); 
         }
        
-        //receive the second part from the client
-        
+
+
+        setsockopt(clientSocket,IPPROTO_TCP,TCP_CONGESTION,"reno",4); // change the cc algorithm for receving the second part of file
+
+
+
+
+        //**************** receive the second part from the client *****************// 
+
+        totalByteReceive = 0;
+        recv(clientSocket,&sizeOfFile, sizeof(sizeOfFile), 0);  // receive the length of the second part of the file
+        printf("size of file to get is %d\n", sizeOfFile); 
+
+
+        //********** recv second part while loop********// 
+        // ** The same process like recv first part ** // 
 
         while(1){
-            memset(buffer, 0, BUFFER_SIZE);
+            memset(buffer, 0, BUFFER_SIZE); 
 
             struct timespec before, after; 
             clock_gettime(CLOCK_MONOTONIC, &before); 
             
-            if((byteRecieved = recv(clientSocket, buffer, BUFFER_SIZE, 0)) < 0){
+            
+            if((byteRecieved = recv(clientSocket, buffer, BUFFER_SIZE, 0)) < 0){ 
                 printf("recv failed with error code : %d", errno);
-                //close socket
                 close(listeningSocket); 
                 close(clientSocket);
                 return -1;
             }
-            else{
-                totalByteReceive += byteRecieved;
-               
-
-                if(totalByteReceive == TEXT_LENGTH){
-                    clock_gettime(CLOCK_MONOTONIC, &after); // finshed recv the second part. save time
-                    timeOfReceivingFiles[indexOfReveivingFiles++] = after.tv_nsec - before.tv_nsec;
-                    break;
-                }
+        
+            totalByteReceive += byteRecieved; 
+            
+            if(totalByteReceive >= sizeOfFile){
+            clock_gettime(CLOCK_MONOTONIC, &after);
+                timeOfReceivingFiles[indexOfReveivingFiles++] = after.tv_nsec - before.tv_nsec; 
+                printf("%d total\n ", totalByteReceive);
+                printf("Received succussfully part 2\n");
+                break;
             }
+            
         }
-
-        printf("Received succussfully part 1\n");  
+         
        
 
+    } // End of the main while loop 
+
+
+
+    long sumOfTimes=0;
+    //long avarageOftimes;
+    // loop the timeOfreceivingFiles buffer, and print and sum up all the indexes (print the time of every part, and sum up all the times)
+    for(int i=0;i<indexOfReveivingFiles;i++){
+        if(i%2==0){ // every 2 part, it's a new sending of the file.
+            if(i>0)
+                printf("\n avarage times recv of file num %d nano seconds %ld\n", (i/2)+1, sumOfTimes/2);
+            printf("\n\nsend number %d:\n",i/2+1);
+            sumOfTimes = 0; 
+        }
+        printf("\ntime %d: %ld nano seconds", i, timeOfReceivingFiles[i]); // print the time in nano seconds 
+        sumOfTimes +=timeOfReceivingFiles[i];
     }
 
-    end: 
+    printf("\n avarage times recv of last file is nano seconds %ld\n", sumOfTimes/2); // avarge time of last file
+    printf("\n");
+    //long avarageOftimes = sumOfTimes/indexOfReveivingFiles; // calculate th avarge time of all sending 
 
-        long sumOfTimes=0; // sum up all the times. 
-        for(int i=0;i<indexOfReveivingFiles;i++){
-            if(i%2==0)
-                printf("\n\nsend number %d:\n",i/2+1);
-            printf("\ntime %d: %ld nano seconds", i, timeOfReceivingFiles[i]);
-            sumOfTimes +=timeOfReceivingFiles[i];
-        }
-        printf("\n");
-        long avarageOftimes = sumOfTimes/indexOfReveivingFiles; // calculate th avarge time
-        printf("\nThe Avarage time for receving all packets is %ld\n", avarageOftimes);
+    //printf("\nThe Avarage time for receving all packets is %ld\n", avarageOftimes); // print the avarage time
 
-        
-
-        
-
-
-    close(listeningSocket);
+    close(clientSocket); // close client socket 
+    close(listeningSocket); // close server socket
 }
 
